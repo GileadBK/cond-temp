@@ -40,8 +40,13 @@ csv_dir = ''
 CSV_FILE = 'CondensateTemp.csv'
 EXCLUDE_COLS = ["Year", "Month", "Week", "Day", "Time", "Date"]
 
+uploaded_file = st.sidebar.file_uploader("Upload CondensateTemp.csv", type=["csv"])
+
 @st.cache_data
-def load_data():
+def load_data(uploaded_file=None):
+    if uploaded_file is not None:
+        df = pd.read_csv(uploaded_file)
+        return df.drop_duplicates()
     file_path = os.path.join(csv_dir, CSV_FILE)
     if not os.path.exists(file_path):
         st.error(f"Data file not found: {file_path}")
@@ -299,7 +304,7 @@ def filter_by_sidebar(df):
     return filtered, selected_meters, selected_years, selected_months, date_range
 
 def main():
-    df = load_data()
+    df = load_data(uploaded_file)
     filtered, selected_meters, selected_years, selected_months, date_range = filter_by_sidebar(df)
     temp_meter_columns = get_temp_meter_columns(filtered)
     
