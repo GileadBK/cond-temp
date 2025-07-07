@@ -43,6 +43,9 @@ EXCLUDE_COLS = ["Year", "Month", "Week", "Day", "Time", "Date"]
 @st.cache_data
 def load_data():
     file_path = os.path.join(csv_dir, CSV_FILE)
+    if not os.path.exists(file_path):
+        st.error(f"Data file not found: {file_path}")
+        return pd.DataFrame()  # Return empty DataFrame to avoid crashing
     df = pd.read_csv(file_path)
     return df.drop_duplicates()
 
