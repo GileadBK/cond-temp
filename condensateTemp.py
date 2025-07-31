@@ -40,13 +40,9 @@ csv_dir = ''
 CSV_FILE = 'CondensateTemp.csv'
 EXCLUDE_COLS = ["Year", "Month", "Week", "Day", "Time", "Date"]
 
-uploaded_file = st.sidebar.file_uploader("Upload CondensateTemp.csv", type=["csv"])
 
 @st.cache_data
-def load_data(uploaded_file=None):
-    if uploaded_file is not None:
-        df = pd.read_csv(uploaded_file)
-        return df.drop_duplicates()
+def load_data():
     file_path = os.path.join(csv_dir, CSV_FILE)
     if not os.path.exists(file_path):
         st.error(f"Data file not found: {file_path}")
@@ -304,7 +300,7 @@ def filter_by_sidebar(df):
     return filtered, selected_meters, selected_years, selected_months, date_range
 
 def main():
-    df = load_data(uploaded_file)
+    df = load_data()
     filtered, selected_meters, selected_years, selected_months, date_range = filter_by_sidebar(df)
     temp_meter_columns = get_temp_meter_columns(filtered)
     
@@ -487,6 +483,9 @@ def main():
         else:
             st.warning("No data available for the selected filters.")
 
+            st.plotly_chart(fig, use_container_width=True)
+
+
 # ========== DETAILED METER METRICS ==========
     st.markdown('<div class="section-header">Detailed Meter Analysis</div>', unsafe_allow_html=True)
     
@@ -615,6 +614,82 @@ def main():
                 st.plotly_chart(box_fig, use_container_width=True)
         else:
             st.info("No data available for distribution analysis.")
+    # ========== SECTION 4: HIGH TEMPERATURE CORRELATION ANALYSIS ==========
+    st.markdown('<div class="section-header">High Temperature Correlation Analysis</div>', unsafe_allow_html=True)
+    
+    correlation_when_meter_high(filtered, metric_cols)
+
+def correlation_when_meter_high(df, meter_cols):
+    """Show correlation when a selected meter > 95°C and list time periods."""
+    st.markdown("### Correlation When Meter > 95°C")
+    if not meter_cols:
+        st.info("No meters available.")
+        return
+
+    # Only show meters that have at least one value > 95°C
+    eligible_meters = [m for m in meter_cols if (df[m] > 95).any()]
+    if not eligible_meters:
+        st.info("No meters have values above 95°C.")
+        return
+
+    selected_meter = st.selectbox("Select Meter for High Temp Correlation", eligible_meters, key="high_temp_meter")
+    if not selected_meter:
+        st.info("Please select a meter.")
+        return
+
+    high_temp_df = df[df[selected_meter] > 95]
+    if high_temp_df.empty:
+        st.warning(f"No records where {selected_meter} > 95°C.")
+        return
+
+    # Correlation: selected meter vs all others
+    other_meters = [m for m in meter_cols if m != selected_meter]
+    if not other_meters:
+        st.info("No other meters to compare.")
+        return
+
+    corr_series = high_temp_df[other_meters].corrwith(high_temp_df[selected_meter])
+    corr_df = corr_series.reset_index()
+    corr_df.columns = ['Meter', 'Correlation']
+
+    fig = px.bar(
+        corr_df,
+        x='Meter',
+        y='Correlation',
+        title=f"Correlation of Other Meters with {selected_meter} (>95°C)",
+        color='Correlation',
+        color_continuous_scale="RdYlBu_r",
+        range_y=[-1, 1]
+    )
+    fig.update_layout(title_x=0.5, height=400, template="plotly_white")
+    st.plotly_chart(fig, use_container_width=True)
+
+    # Show time periods
+    st.markdown(f"**Time periods when {selected_meter} > 95°C:**")
+    if "Date" in high_temp_df.columns and "Time" in high_temp_df.columns:
+        times = high_temp_df[["Date", "Time"]].copy()
+        # Find the meter with the closest value to the selected meter at each time
+        other_meters = [m for m in meter_cols if m != selected_meter]
+        def most_correlated_row(row):
+            vals = row[other_meters]
+            sel_val = row[selected_meter]
+            diffs = (vals - sel_val).abs()
+            return diffs.idxmin() if not diffs.isnull().all() else None
+        times["Most Correlated Meter"] = high_temp_df.apply(most_correlated_row, axis=1)
+        times = times.drop_duplicates()
+        st.dataframe(times, hide_index=True, use_container_width=True)
+    elif "DateTime" in high_temp_df.columns:
+        times = high_temp_df[["DateTime"]].copy()
+        other_meters = [m for m in meter_cols if m != selected_meter]
+        def most_correlated_row(row):
+            vals = row[other_meters]
+            sel_val = row[selected_meter]
+            diffs = (vals - sel_val).abs()
+            return diffs.idxmin() if not diffs.isnull().all() else None
+        times["Most Correlated Meter"] = high_temp_df.apply(most_correlated_row, axis=1)
+        st.dataframe(times, hide_index=True, use_container_width=True)
+    else:
+        st.dataframe(high_temp_df.index, hide_index=True, use_container_width=True)
 
 if __name__ == "__main__":
     main()
